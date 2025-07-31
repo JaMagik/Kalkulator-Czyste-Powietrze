@@ -3,8 +3,9 @@ import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { documentationItems, heatItems, thermoItems, ventItems, energyOptions } from './data/programData';
 import latoFont from './assets/Lato-Regular.ttf';
+import logo from './assets/Grupa Kaman.png'; // Importowanie logo
 
-// --- FUNKCJE POMOCNICZE PRZENIESIONE POZA KOMPONENT ---
+// --- FUNKCJE POMOCNICZE ---
 
 const initEntries = items => {
   const obj = {};
@@ -19,12 +20,11 @@ const parseDecimal = (value) => {
   return parseFloat(value.toString().replace(',', '.')) || 0;
 };
 
-// Nowa funkcja do formatowania liczb
 const formatNumber = (num) => {
   if (num % 1 === 0) {
-    return num.toFixed(0); // Zwraca liczbę całkowitą bez miejsc po przecinku
+    return num.toFixed(0);
   }
-  return num.toFixed(2); // Zwraca liczbę z dwoma miejscami po przecinku
+  return num.toFixed(2);
 };
 
 
@@ -72,7 +72,7 @@ function CostCategoryInput({ title, description, items, entries, updateEntry, ma
   );
 }
 
-function ResultsDisplay({ form, results, supportLevel }) {
+function ResultsDisplay({ form, results, supportLevel, maxGrants }) {
     if (!supportLevel) return null;
 
     if (supportLevel === 'none') {
@@ -90,77 +90,155 @@ function ResultsDisplay({ form, results, supportLevel }) {
     const exportResultsToPDF = async () => {
         if (!results) return;
 
-        const fontResponse = await fetch(latoFont);
+        // Równoległe pobieranie czcionki i logo
+        const [fontResponse, logoResponse] = await Promise.all([
+            fetch(latoFont),
+            fetch(logo)
+        ]);
         const fontBlob = await fontResponse.blob();
+        const logoBlob = await logoResponse.blob();
+
+        const toBase64 = blob => new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onloadend = () => resolve(reader.result);
+            reader.onerror = reject;
+            reader.readAsDataURL(blob);
+        });
+
+        const fontB64 = await toBase64(fontBlob);
+        const logoB64 = await toBase64(logoBlob);
+
+        const doc = new jsPDF();
         
-        const reader = new FileReader();
-        reader.readAsDataURL(fontBlob);
-        reader.onloadend = () => {
-            const base64Font = reader.result.split(',')[1];
-            const doc = new jsPDF();
-            
-            doc.addFileToVFS('Lato-Regular.ttf', base64Font);
-            doc.addFont('Lato-Regular.ttf', 'Lato', 'normal');
-            doc.setFont('Lato');
+        // Dodawanie czcionki
+        const base64Font = fontB64.split(',')[1];
+        doc.addFileToVFS('Lato-Regular.ttf', base64Font);
+        doc.addFont('Lato-Regular.ttf', 'Lato', 'normal');
+        doc.setFont('Lato');
 
-            doc.setFontSize(18);
-            doc.text('Podsumowanie z kalkulatora "Czyste Powietrze 2025"', 14, 22);
-            doc.setFontSize(11);
-            doc.setTextColor(100);
-            doc.text(`Beneficjent: ${form.name || 'Brak danych'}, ${form.address || 'Brak danych'}`, 14, 32);
-            doc.text(`Poziom dofinansowania: ${levelText[supportLevel]}`, 14, 38);
+        // Dodawanie logo na górze
+        const pageWidth = doc.internal.pageSize.getWidth();
+        const logoWidth = 60;
+        const logoHeight = 15;
+        const x = (pageWidth / 2) - (logoWidth / 2);
+        doc.addImage(logoB64, 'PNG', x, 15, logoWidth, logoHeight);
 
-            autoTable(doc, {
-                startY: 45,
-                head: [['Podsumowanie finansowe', 'Kwota']],
-                body: [
-                    ['Kwota netto inwestycji', `${formatNumber(results.totals.net)} zł`],
-                    ['VAT', `${formatNumber(results.totals.vat)} zł`],
-                    ['Kwota brutto inwestycji', `${formatNumber(results.totals.gross)} zł`],
-                    ['Przyznane dofinansowanie', `${formatNumber(results.totals.grant)} zł`],
-                    ['Wkład własny beneficjenta', `${formatNumber(results.totals.beneficiary)} zł`],
-                ],
-                theme: 'striped',
-                styles: { font: 'Lato', fontStyle: 'normal' },
-                headStyles: { fillColor: '#2c3e50', textColor: 'white' },
-            });
+        // Dodawanie tytułu pod logo
+        let currentY = 15 + logoHeight + 15;
+        doc.setFontSize(18);
+        doc.text('Kalkulacja Czyste Powietrze', pageWidth / 2, currentY, { align: 'center' });
+        currentY += 10;
 
-            const generateCategoryTable = (title, data) => {
-                if (data && data.rows.length > 0 && data.net > 0) {
-                    autoTable(doc, {
-                        startY: doc.lastAutoTable.finalY + 12,
-                        head: [
-                          [{ content: title, colSpan: 7, styles: { halign: 'center', fillColor: '#34495e' } }],
-                          ['Pozycja', 'Ilość', 'Netto', 'VAT', 'Brutto', 'Dotacja', 'Wkład']
-                        ],
-                        body: data.rows.map(row => [
-                            String(row.name), String(formatNumber(row.quantity)), `${formatNumber(row.costNet)} zł`, `${formatNumber(row.vatAmount)} zł`,
-                            `${formatNumber(row.gross)} zł`, `${formatNumber(row.grant)} zł`, `${formatNumber(row.beneficiary)} zł`,
-                        ]),
-                        theme: 'grid',
-                        styles: { font: 'Lato', fontStyle: 'normal' },
-                        headStyles: { fillColor: '#7f8c8d', textColor: 'white' },
-                    });
-                }
-            };
+        // Dane beneficjenta
+        doc.setFontSize(11);
+        doc.setTextColor(100);
+        doc.text(`Beneficjent: ${form.name || 'Brak danych'}, ${form.address || 'Brak danych'}`, 14, currentY);
+        currentY += 6;
+        doc.text(`Poziom dofinansowania: ${levelText[supportLevel]}`, 14, currentY);
+        currentY += 10;
 
-            generateCategoryTable('Dokumentacja', results.docs);
-            generateCategoryTable('Wymiana źródła ciepła', results.heat);
-            generateCategoryTable('Prace termomodernizacyjne', results.thermo);
-            generateCategoryTable('Modernizacja systemu wentylacji', results.vent);
-            
-            const pageCount = doc.internal.getNumberOfPages();
-            for(let i = 1; i <= pageCount; i++) {
-                doc.setPage(i);
-                doc.setFont('Lato', 'normal');
-                doc.setFontSize(9);
-                doc.setTextColor(150);
-                doc.text(`Strona ${i} z ${pageCount}`, doc.internal.pageSize.width - 25, doc.internal.pageSize.height - 10);
-                doc.text(`Wygenerowano: ${new Date().toLocaleDateString('pl-PL')}`, 14, doc.internal.pageSize.height - 10);
+        // Pierwsza tabela
+        autoTable(doc, {
+            startY: currentY,
+            head: [['Podsumowanie finansowe', 'Kwota']],
+            body: [
+                ['Kwota netto inwestycji', `${formatNumber(results.totals.net)} zł`],
+                ['VAT', `${formatNumber(results.totals.vat)} zł`],
+                ['Kwota brutto inwestycji', `${formatNumber(results.totals.gross)} zł`],
+                ['Przyznane dofinansowanie', `${formatNumber(results.totals.grant)} zł`],
+                ['Wkład własny beneficjenta', `${formatNumber(results.totals.beneficiary)} zł`],
+            ],
+            theme: 'striped',
+            styles: { font: 'Lato', fontStyle: 'normal' },
+            headStyles: { fillColor: '#2c3e50', textColor: 'white' },
+        });
+
+        const generateCategoryTable = (title, data) => {
+            if (data && data.rows.length > 0 && data.net > 0) {
+                autoTable(doc, {
+                    startY: doc.lastAutoTable.finalY + 12,
+                    head: [
+                      [{ content: title, colSpan: 7, styles: { halign: 'center', fillColor: '#34495e' } }],
+                      ['Pozycja', 'Ilość', 'Netto', 'VAT', 'Brutto', 'Dotacja', 'Wkład']
+                    ],
+                    body: data.rows.map(row => [
+                        String(row.name), String(formatNumber(row.quantity)), `${formatNumber(row.costNet)} zł`, `${formatNumber(row.vatAmount)} zł`,
+                        `${formatNumber(row.gross)} zł`, `${formatNumber(row.grant)} zł`, `${formatNumber(row.beneficiary)} zł`,
+                    ]),
+                    theme: 'grid',
+                    styles: { font: 'Lato', fontStyle: 'normal' },
+                    headStyles: { fillColor: '#7f8c8d', textColor: 'white' },
+                });
             }
-            
-            doc.save('CzystePowietrze-Podsumowanie.pdf');
         };
+
+        generateCategoryTable('Dokumentacja', results.docs);
+        generateCategoryTable('Wymiana źródła ciepła', results.heat);
+        generateCategoryTable('Prace termomodernizacyjne', results.thermo);
+        generateCategoryTable('Modernizacja systemu wentylacji', results.vent);
+        
+        doc.addPage();
+        
+        const summaryBody = [];
+        if (maxGrants.docs > 0) {
+            summaryBody.push(['Dokumentacja', `${formatNumber(maxGrants.docs)} zł`, `${formatNumber(results.docs.grant)} zł`]);
+        }
+        if (form.replaceHeat === 'yes' && maxGrants.heat > 0) {
+            summaryBody.push(['Wymiana źródła ciepła', `${formatNumber(maxGrants.heat)} zł`, `${formatNumber(results.heat.grant)} zł`]);
+        }
+        if (form.fullThermo === 'yes' && maxGrants.thermo > 0) {
+            summaryBody.push(['Prace termomodernizacyjne', `${formatNumber(maxGrants.thermo)} zł`, `${formatNumber(results.thermo.grant)} zł`]);
+        }
+        if (form.fullThermo === 'yes' && maxGrants.vent > 0) {
+            summaryBody.push(['Modernizacja systemu wentylacji', `${formatNumber(maxGrants.vent)} zł`, `${formatNumber(results.vent.grant)} zł`]);
+        }
+
+        if (summaryBody.length > 0) {
+            autoTable(doc, {
+                startY: 20,
+                head: [
+                    [{ content: 'Podsumowanie wykorzystania dotacji w kategoriach', colSpan: 3, styles: { halign: 'center', fillColor: '#34495e' } }],
+                    ['Kategoria', 'Maksymalna dotacja w kategorii', 'Wykorzystano z dotacji']
+                ],
+                body: summaryBody,
+                theme: 'grid',
+                styles: { font: 'Lato', fontStyle: 'normal' },
+                headStyles: { fillColor: '#7f8c8d', textColor: 'white' },
+            });
+        }
+
+        const grantCap = { highest: 135000, increased: 99000, basic: 66000 }[supportLevel] || 0;
+        let totalMaxGrantForScope = maxGrants.docs;
+        if (form.replaceHeat === 'yes') totalMaxGrantForScope += maxGrants.heat;
+        if (form.fullThermo === 'yes') {
+            totalMaxGrantForScope += maxGrants.thermo;
+            totalMaxGrantForScope += maxGrants.vent;
+        }
+        const finalPossibleGrant = Math.min(totalMaxGrantForScope, grantCap);
+
+        autoTable(doc, {
+            startY: doc.lastAutoTable.finalY + 12,
+            head: [['Podsumowanie końcowe', 'Kwota']],
+            body: [
+                ['Maksymalna dotacja możliwa do uzyskania dla wybranych prac', `${formatNumber(finalPossibleGrant)} zł`],
+                ['Przyznana dotacja w ramach tej kalkulacji', `${formatNumber(results.totals.grant)} zł`]
+            ],
+            theme: 'striped',
+            styles: { font: 'Lato', fontStyle: 'normal' },
+            headStyles: { fillColor: '#2c3e50', textColor: 'white' },
+        });
+
+        const pageCount = doc.internal.getNumberOfPages();
+        for(let i = 1; i <= pageCount; i++) {
+            doc.setPage(i);
+            doc.setFont('Lato', 'normal');
+            doc.setFontSize(9);
+            doc.setTextColor(150);
+            doc.text(`Strona ${i} z ${pageCount}`, doc.internal.pageSize.width - 25, doc.internal.pageSize.height - 10);
+            doc.text(`Wygenerowano: ${new Date().toLocaleDateString('pl-PL')}`, 14, doc.internal.pageSize.height - 10);
+        }
+        
+        doc.save('CzystePowietrze-Kalkulacja.pdf');
     };
 
     return (
@@ -289,10 +367,11 @@ export default function App() {
       
       const vatRate = parseDecimal(entry.vat) / 100;
       const costNet = qty * price;
-      const grantPerUnit = item.max100 * factor;
-      const grant = Math.min(costNet, qty * grantPerUnit);
-      const vatAmount = costNet * vatRate;
       
+      const maxGrantForItem = item.max100 * factor;
+      const grant = Math.min(costNet, maxGrantForItem);
+      
+      const vatAmount = costNet * vatRate;
       const gross = Math.round(costNet + vatAmount);
       const beneficiary = gross - grant;
 
@@ -335,23 +414,50 @@ export default function App() {
     setResults({ docs, heat, thermo, vent, totals, level });
   };
   
-  // Obliczanie maksymalnych grantów dynamicznie na podstawie formularza
   const currentSupportLevel = useMemo(() => determineSupportLevel(form), [form]);
 
-  const calculateMaxGrant = (items, level) => {
-    if (!level || level === 'none') return 0;
-    const factor = { highest: 1.0, increased: 0.7, basic: 0.4 }[level];
-    return items.reduce((sum, item) => sum + item.max100 * factor, 0);
+  const calculateMaxGrantForCategory = (items, level, entries) => {
+      if (!level || level === 'none') return 0;
+      const factor = { highest: 1.0, increased: 0.7, basic: 0.4 }[level];
+      let totalMaxGrant = 0;
+
+      items.forEach(item => {
+          const entry = entries[item.id] || {};
+          if (parseDecimal(entry.quantity) > 0) {
+              totalMaxGrant += item.max100 * factor;
+          }
+      });
+      return totalMaxGrant;
   };
-  
-  const maxGrantDocs = useMemo(() => calculateMaxGrant(documentationItems, currentSupportLevel), [currentSupportLevel]);
-  const maxGrantHeat = useMemo(() => calculateMaxGrant(heatItems, currentSupportLevel), [currentSupportLevel]);
-  const maxGrantThermo = useMemo(() => calculateMaxGrant(thermoItems, currentSupportLevel), [currentSupportLevel]);
-  const maxGrantVent = useMemo(() => calculateMaxGrant(ventItems, currentSupportLevel), [currentSupportLevel]);
+
+  const calculateMaxGrantForHeat = (items, level, entries) => {
+      if (!level || level === 'none') return 0;
+      const factor = { highest: 1.0, increased: 0.7, basic: 0.4 }[level];
+      let maxHeatSourceGrant = 0;
+      let centralHeatingGrant = 0;
+
+      items.forEach(item => {
+          const entry = entries[item.id] || {};
+          if (parseDecimal(entry.quantity) > 0) {
+              if (item.id === 'central_heating') {
+                  centralHeatingGrant = item.max100 * factor;
+              } else {
+                  maxHeatSourceGrant = Math.max(maxHeatSourceGrant, item.max100 * factor);
+              }
+          }
+      });
+      return maxHeatSourceGrant + centralHeatingGrant;
+  };
+
+  const maxGrantDocs = useMemo(() => calculateMaxGrantForCategory(documentationItems, currentSupportLevel, docEntries), [currentSupportLevel, docEntries]);
+  const maxGrantHeat = useMemo(() => calculateMaxGrantForHeat(heatItems, currentSupportLevel, heatEntries), [currentSupportLevel, heatEntries]);
+  const maxGrantThermo = useMemo(() => calculateMaxGrantForCategory(thermoItems, currentSupportLevel, thermoEntries), [currentSupportLevel, thermoEntries]);
+  const maxGrantVent = useMemo(() => calculateMaxGrantForCategory(ventItems, currentSupportLevel, ventEntries), [currentSupportLevel, ventEntries]);
 
   return (
     <div className="container">
-      <h1>Kalkulator programu „Czyste Powietrze 2025”</h1>
+      <img src={logo} alt="Logo Kalkulatora" className="app-logo" />
+      <h1>Kalkulacja Czyste Powietrze</h1>
       <p>
         Ten kalkulator pozwala oszacować maksymalne dofinansowanie w ramach programu. Wprowadź dane, aby określić poziom wsparcia i obliczyć kwotę dotacji.
       </p>
@@ -399,7 +505,17 @@ export default function App() {
         <div className="actions"><button type="submit">Oblicz</button></div>
       </form>
 
-      {results && <ResultsDisplay form={form} results={results} supportLevel={results.level} />}
+      {results && <ResultsDisplay 
+                    form={form} 
+                    results={results} 
+                    supportLevel={results.level} 
+                    maxGrants={{
+                        docs: maxGrantDocs,
+                        heat: maxGrantHeat,
+                        thermo: maxGrantThermo,
+                        vent: maxGrantVent
+                    }}
+                  />}
     </div>
   );
 }
