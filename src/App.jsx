@@ -19,6 +19,15 @@ const parseDecimal = (value) => {
   return parseFloat(value.toString().replace(',', '.')) || 0;
 };
 
+// Nowa funkcja do formatowania liczb
+const formatNumber = (num) => {
+  if (num % 1 === 0) {
+    return num.toFixed(0); // Zwraca liczbę całkowitą bez miejsc po przecinku
+  }
+  return num.toFixed(2); // Zwraca liczbę z dwoma miejscami po przecinku
+};
+
+
 // --- Komponenty pomocnicze ---
 
 function CostCategoryInput({ title, description, items, entries, updateEntry, maxGrant }) {
@@ -105,15 +114,15 @@ function ResultsDisplay({ form, results, supportLevel }) {
                 startY: 45,
                 head: [['Podsumowanie finansowe', 'Kwota']],
                 body: [
-                    ['Kwota netto inwestycji', `${results.totals.net.toFixed(2)} zł`],
-                    ['VAT', `${results.totals.vat.toFixed(2)} zł`],
-                    ['Kwota brutto inwestycji', `${results.totals.gross.toFixed(2)} zł`],
-                    ['Przyznane dofinansowanie', `${results.totals.grant.toFixed(2)} zł`],
-                    ['Wkład własny beneficjenta', `${results.totals.beneficiary.toFixed(2)} zł`],
+                    ['Kwota netto inwestycji', `${formatNumber(results.totals.net)} zł`],
+                    ['VAT', `${formatNumber(results.totals.vat)} zł`],
+                    ['Kwota brutto inwestycji', `${formatNumber(results.totals.gross)} zł`],
+                    ['Przyznane dofinansowanie', `${formatNumber(results.totals.grant)} zł`],
+                    ['Wkład własny beneficjenta', `${formatNumber(results.totals.beneficiary)} zł`],
                 ],
                 theme: 'striped',
                 styles: { font: 'Lato', fontStyle: 'normal' },
-                headStyles: { fillColor: '#2c3e50', textColor: 'white', fontStyle: 'bold' },
+                headStyles: { fillColor: '#2c3e50', textColor: 'white' },
             });
 
             const generateCategoryTable = (title, data) => {
@@ -121,16 +130,16 @@ function ResultsDisplay({ form, results, supportLevel }) {
                     autoTable(doc, {
                         startY: doc.lastAutoTable.finalY + 12,
                         head: [
-                          [{ content: title, colSpan: 7, styles: { halign: 'center', fillColor: '#34495e', fontStyle: 'bold' } }],
+                          [{ content: title, colSpan: 7, styles: { halign: 'center', fillColor: '#34495e' } }],
                           ['Pozycja', 'Ilość', 'Netto', 'VAT', 'Brutto', 'Dotacja', 'Wkład']
                         ],
                         body: data.rows.map(row => [
-                            String(row.name), String(row.quantity.toFixed(2)), `${row.costNet.toFixed(2)} zł`, `${row.vatAmount.toFixed(2)} zł`,
-                            `${row.gross.toFixed(2)} zł`, `${row.grant.toFixed(2)} zł`, `${row.beneficiary.toFixed(2)} zł`,
+                            String(row.name), String(formatNumber(row.quantity)), `${formatNumber(row.costNet)} zł`, `${formatNumber(row.vatAmount)} zł`,
+                            `${formatNumber(row.gross)} zł`, `${formatNumber(row.grant)} zł`, `${formatNumber(row.beneficiary)} zł`,
                         ]),
                         theme: 'grid',
                         styles: { font: 'Lato', fontStyle: 'normal' },
-                        headStyles: { fillColor: '#7f8c8d', textColor: 'white', fontStyle: 'bold' },
+                        headStyles: { fillColor: '#7f8c8d', textColor: 'white' },
                     });
                 }
             };
@@ -167,11 +176,11 @@ function ResultsDisplay({ form, results, supportLevel }) {
             <h3>Podsumowanie</h3>
             <table>
                 <tbody>
-                    <tr><th>Kwota netto inwestycji</th><td>{results.totals.net.toFixed(2)} zł</td></tr>
-                    <tr><th>VAT</th><td>{results.totals.vat.toFixed(2)} zł</td></tr>
-                    <tr><th>Kwota brutto inwestycji</th><td>{results.totals.gross.toFixed(2)} zł</td></tr>
-                    <tr><th>Dofinansowanie</th><td>{results.totals.grant.toFixed(2)} zł</td></tr>
-                    <tr><th>Kwota dopłaty beneficjenta</th><td>{results.totals.beneficiary.toFixed(2)} zł</td></tr>
+                    <tr><th>Kwota netto inwestycji</th><td>{formatNumber(results.totals.net)} zł</td></tr>
+                    <tr><th>VAT</th><td>{formatNumber(results.totals.vat)} zł</td></tr>
+                    <tr><th>Kwota brutto inwestycji</th><td>{formatNumber(results.totals.gross)} zł</td></tr>
+                    <tr><th>Dofinansowanie</th><td>{formatNumber(results.totals.grant)} zł</td></tr>
+                    <tr><th>Kwota dopłaty beneficjenta</th><td>{formatNumber(results.totals.beneficiary)} zł</td></tr>
                 </tbody>
             </table>
             <div className="actions" style={{ marginTop: '1rem' }}>
@@ -196,8 +205,8 @@ function CategoryTable({ title, data }) {
                 <tbody>
                     {data.rows.map((row, idx) => (
                         <tr key={idx}>
-                            <td>{row.name}</td><td>{row.quantity.toFixed(2)}</td><td>{row.costNet.toFixed(2)}</td><td>{row.vatAmount.toFixed(2)}</td>
-                            <td>{row.gross.toFixed(2)}</td><td>{row.grant.toFixed(2)}</td><td>{row.beneficiary.toFixed(2)}</td>
+                            <td>{row.name}</td><td>{formatNumber(row.quantity)}</td><td>{formatNumber(row.costNet)}</td><td>{formatNumber(row.vatAmount)}</td>
+                            <td>{formatNumber(row.gross)}</td><td>{formatNumber(row.grant)}</td><td>{formatNumber(row.beneficiary)}</td>
                         </tr>
                     ))}
                 </tbody>
@@ -284,7 +293,6 @@ export default function App() {
       const grant = Math.min(costNet, qty * grantPerUnit);
       const vatAmount = costNet * vatRate;
       
-      // *** NOWA ZMIANA: Zaokrąglanie kwoty brutto dla każdej pozycji ***
       const gross = Math.round(costNet + vatAmount);
       const beneficiary = gross - grant;
 
@@ -292,9 +300,9 @@ export default function App() {
       result.net += costNet;
       result.vat += vatAmount;
       result.grant += grant;
+      result.gross += gross;
     });
     
-    result.gross = result.net + result.vat; // Suma brutto przed zaokrągleniem
     result.beneficiary = result.gross - result.grant;
     return result;
   };
@@ -304,7 +312,7 @@ export default function App() {
     const level = determineSupportLevel(form);
 
     if (level === 'none') {
-      setResults(null); // Resetuj wyniki jeśli brak kwalifikacji
+      setResults(null); 
       return;
     }
 
@@ -317,10 +325,8 @@ export default function App() {
       net: docs.net + heat.net + thermo.net + vent.net,
       vat: docs.vat + heat.vat + thermo.vat + vent.vat,
       grant: docs.grant + heat.grant + thermo.grant + vent.grant,
+      gross: docs.gross + heat.gross + thermo.gross + vent.gross,
     };
-    
-    // *** NOWA ZMIANA: Zaokrąglenie końcowej sumy brutto ***
-    totals.gross = Math.round(totals.net + totals.vat);
     
     const grantCap = { highest: 135000, increased: 99000, basic: 66000 }[level] || 0;
     totals.grant = Math.min(totals.grant, grantCap);
