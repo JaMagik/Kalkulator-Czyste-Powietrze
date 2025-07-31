@@ -1,11 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { documentationItems, heatItems, thermoItems, ventItems, energyOptions } from './data/programData';
 import latoFont from './assets/Lato-Regular.ttf';
 
 // --- FUNKCJE POMOCNICZE PRZENIESIONE POZA KOMPONENT ---
-// To rozwiązuje błąd "Cannot access before initialization"
 
 const initEntries = items => {
   const obj = {};
@@ -20,13 +19,20 @@ const parseDecimal = (value) => {
   return parseFloat(value.toString().replace(',', '.')) || 0;
 };
 
-// --- Komponenty pomocnicze (również poza głównym komponentem) ---
+// --- Komponenty pomocnicze ---
 
-function CostCategoryInput({ title, description, items, entries, updateEntry }) {
+function CostCategoryInput({ title, description, items, entries, updateEntry, maxGrant }) {
   return (
     <fieldset>
       <legend>{title}</legend>
-      {description && <p>{description}</p>}
+      <p>
+        {description}
+        {maxGrant > 0 && (
+          <strong style={{ display: 'block', marginTop: '5px' }}>
+            Maksymalna dotacja w tej kategorii: {maxGrant.toLocaleString('pl-PL', { style: 'currency', currency: 'PLN' })}
+          </strong>
+        )}
+      </p>
       <table>
         <thead>
           <tr>
@@ -58,160 +64,148 @@ function CostCategoryInput({ title, description, items, entries, updateEntry }) 
 }
 
 function ResultsDisplay({ form, results, supportLevel }) {
-  if (!supportLevel) return null;
+    if (!supportLevel) return null;
 
-  if (supportLevel === 'none') {
-    return (
-      <div className="results"><p className="warning">Nie spełniasz kryteriów dochodowych programu. Dotacja nie przysługuje.</p></div>
-    );
-  }
+    if (supportLevel === 'none') {
+        return (
+            <div className="results"><p className="warning">Nie spełniasz kryteriów dochodowych programu. Dotacja nie przysługuje.</p></div>
+        );
+    }
 
-  const levelText = {
-    highest: 'Najwyższy – do 100 % netto',
-    increased: 'Podwyższony – do 70 %',
-    basic: 'Podstawowy – do 40 %'
-  };
-
-  const exportResultsToPDF = async () => {
-    if (!results) return;
-
-    const fontResponse = await fetch(latoFont);
-    const fontBlob = await fontResponse.blob();
-    
-    const reader = new FileReader();
-    reader.readAsDataURL(fontBlob);
-    reader.onloadend = () => {
-      const base64Font = reader.result.split(',')[1];
-      
-      const doc = new jsPDF();
-      
-      doc.addFileToVFS('Lato-Regular.ttf', base64Font);
-      doc.addFont('Lato-Regular.ttf', 'Lato', 'normal');
-      doc.setFont('Lato');
-
-      doc.setFontSize(18);
-      doc.text('Podsumowanie z kalkulatora "Czyste Powietrze 2025"', 14, 22);
-      doc.setFontSize(11);
-      doc.setTextColor(100);
-      doc.text(`Beneficjent: ${form.name || 'Brak danych'}, ${form.address || 'Brak danych'}`, 14, 32);
-      doc.text(`Poziom dofinansowania: ${levelText[supportLevel]}`, 14, 38);
-
-      autoTable(doc, {
-        startY: 45,
-        head: [['Podsumowanie finansowe', 'Kwota']],
-        body: [
-            ['Kwota netto inwestycji', `${results.totals.net.toFixed(2)} zł`],
-            ['VAT', `${results.totals.vat.toFixed(2)} zł`],
-            ['Kwota brutto inwestycji', `${results.totals.gross.toFixed(2)} zł`],
-            ['Przyznane dofinansowanie', `${results.totals.grant.toFixed(2)} zł`],
-            ['Wkład własny beneficjenta', `${results.totals.beneficiary.toFixed(2)} zł`],
-        ],
-        theme: 'striped',
-        styles: { font: 'Lato', fontStyle: 'normal' },
-        headStyles: {
-            fillColor: '#2c3e50',
-            textColor: 'white',
-            fontStyle: 'bold',
-        },
-      });
-
-      const generateCategoryTable = (title, data) => {
-        if (data && data.rows.length > 0 && data.net > 0) {
-            autoTable(doc, {
-                startY: doc.lastAutoTable.finalY + 12,
-                head: [
-                  [{ content: title, colSpan: 7, styles: { halign: 'center', fillColor: '#34495e', fontStyle: 'bold' } }],
-                  ['Pozycja', 'Ilość', 'Netto', 'VAT', 'Brutto', 'Dotacja', 'Wkład']
-                ],
-                body: data.rows.map(row => [
-                    String(row.name),
-                    String(row.quantity.toFixed(2)),
-                    `${row.costNet.toFixed(2)} zł`,
-                    `${row.vatAmount.toFixed(2)} zł`,
-                    `${row.gross.toFixed(2)} zł`,
-                    `${row.grant.toFixed(2)} zł`,
-                    `${row.beneficiary.toFixed(2)} zł`,
-                ]),
-                theme: 'grid',
-                styles: { font: 'Lato', fontStyle: 'normal' },
-                headStyles: {
-                    fillColor: '#7f8c8d',
-                    textColor: 'white',
-                    fontStyle: 'bold'
-                },
-            });
-        }
-      };
-
-      generateCategoryTable('Dokumentacja', results.docs);
-      generateCategoryTable('Wymiana źródła ciepła', results.heat);
-      generateCategoryTable('Prace termomodernizacyjne', results.thermo);
-      generateCategoryTable('Modernizacja systemu wentylacji', results.vent);
-      
-      const pageCount = doc.internal.getNumberOfPages();
-      for(let i = 1; i <= pageCount; i++) {
-          doc.setPage(i);
-          doc.setFont('Lato', 'normal');
-          doc.setFontSize(9);
-          doc.setTextColor(150);
-          doc.text(`Strona ${i} z ${pageCount}`, doc.internal.pageSize.width - 25, doc.internal.pageSize.height - 10);
-          doc.text(`Wygenerowano: ${new Date().toLocaleDateString('pl-PL')}`, 14, doc.internal.pageSize.height - 10);
-      }
-      
-      doc.save('CzystePowietrze-Podsumowanie.pdf');
+    const levelText = {
+        highest: 'Najwyższy – do 100 % netto',
+        increased: 'Podwyższony – do 70 %',
+        basic: 'Podstawowy – do 40 %'
     };
-  };
 
-  return (
-    <div className="results">
-      <p className="beneficiary"><strong>Beneficjent:</strong> {form.name && form.address ? `${form.name}, ${form.address}`: ''}</p>
-      <h2>Poziom dofinansowania: {levelText[supportLevel]}</h2>
-      
-      {results.docs.rows.length > 0 && <CategoryTable title="Dokumentacja" data={results.docs} />}
-      {results.heat.rows.length > 0 && <CategoryTable title="Wymiana źródła ciepła" data={results.heat} />}
-      {results.thermo.rows.length > 0 && <CategoryTable title="Prace termomodernizacyjne" data={results.thermo} />}
-      {results.vent.rows.length > 0 && <CategoryTable title="Modernizacja systemu wentylacji" data={results.vent} />}
-      
-      <h3>Podsumowanie</h3>
-      <table>
-        <tbody>
-          <tr><th>Kwota netto inwestycji</th><td>{results.totals.net.toFixed(2)} zł</td></tr>
-          <tr><th>VAT</th><td>{results.totals.vat.toFixed(2)} zł</td></tr>
-          <tr><th>Kwota brutto inwestycji</th><td>{results.totals.gross.toFixed(2)} zł</td></tr>
-          <tr><th>Dofinansowanie</th><td>{results.totals.grant.toFixed(2)} zł</td></tr>
-          <tr><th>Kwota dopłaty beneficjenta</th><td>{results.totals.beneficiary.toFixed(2)} zł</td></tr>
-        </tbody>
-      </table>
-      <div className="actions" style={{ marginTop: '1rem' }}>
-        <button type="button" className="btn-secondary" onClick={exportResultsToPDF}>Eksportuj do PDF</button>
-        <button type="button" className="btn-secondary" onClick={() => window.print()}>Drukuj</button>
-      </div>
-    </div>
-  );
+    const exportResultsToPDF = async () => {
+        if (!results) return;
+
+        const fontResponse = await fetch(latoFont);
+        const fontBlob = await fontResponse.blob();
+        
+        const reader = new FileReader();
+        reader.readAsDataURL(fontBlob);
+        reader.onloadend = () => {
+            const base64Font = reader.result.split(',')[1];
+            const doc = new jsPDF();
+            
+            doc.addFileToVFS('Lato-Regular.ttf', base64Font);
+            doc.addFont('Lato-Regular.ttf', 'Lato', 'normal');
+            doc.setFont('Lato');
+
+            doc.setFontSize(18);
+            doc.text('Podsumowanie z kalkulatora "Czyste Powietrze 2025"', 14, 22);
+            doc.setFontSize(11);
+            doc.setTextColor(100);
+            doc.text(`Beneficjent: ${form.name || 'Brak danych'}, ${form.address || 'Brak danych'}`, 14, 32);
+            doc.text(`Poziom dofinansowania: ${levelText[supportLevel]}`, 14, 38);
+
+            autoTable(doc, {
+                startY: 45,
+                head: [['Podsumowanie finansowe', 'Kwota']],
+                body: [
+                    ['Kwota netto inwestycji', `${results.totals.net.toFixed(2)} zł`],
+                    ['VAT', `${results.totals.vat.toFixed(2)} zł`],
+                    ['Kwota brutto inwestycji', `${results.totals.gross.toFixed(2)} zł`],
+                    ['Przyznane dofinansowanie', `${results.totals.grant.toFixed(2)} zł`],
+                    ['Wkład własny beneficjenta', `${results.totals.beneficiary.toFixed(2)} zł`],
+                ],
+                theme: 'striped',
+                styles: { font: 'Lato', fontStyle: 'normal' },
+                headStyles: { fillColor: '#2c3e50', textColor: 'white', fontStyle: 'bold' },
+            });
+
+            const generateCategoryTable = (title, data) => {
+                if (data && data.rows.length > 0 && data.net > 0) {
+                    autoTable(doc, {
+                        startY: doc.lastAutoTable.finalY + 12,
+                        head: [
+                          [{ content: title, colSpan: 7, styles: { halign: 'center', fillColor: '#34495e', fontStyle: 'bold' } }],
+                          ['Pozycja', 'Ilość', 'Netto', 'VAT', 'Brutto', 'Dotacja', 'Wkład']
+                        ],
+                        body: data.rows.map(row => [
+                            String(row.name), String(row.quantity.toFixed(2)), `${row.costNet.toFixed(2)} zł`, `${row.vatAmount.toFixed(2)} zł`,
+                            `${row.gross.toFixed(2)} zł`, `${row.grant.toFixed(2)} zł`, `${row.beneficiary.toFixed(2)} zł`,
+                        ]),
+                        theme: 'grid',
+                        styles: { font: 'Lato', fontStyle: 'normal' },
+                        headStyles: { fillColor: '#7f8c8d', textColor: 'white', fontStyle: 'bold' },
+                    });
+                }
+            };
+
+            generateCategoryTable('Dokumentacja', results.docs);
+            generateCategoryTable('Wymiana źródła ciepła', results.heat);
+            generateCategoryTable('Prace termomodernizacyjne', results.thermo);
+            generateCategoryTable('Modernizacja systemu wentylacji', results.vent);
+            
+            const pageCount = doc.internal.getNumberOfPages();
+            for(let i = 1; i <= pageCount; i++) {
+                doc.setPage(i);
+                doc.setFont('Lato', 'normal');
+                doc.setFontSize(9);
+                doc.setTextColor(150);
+                doc.text(`Strona ${i} z ${pageCount}`, doc.internal.pageSize.width - 25, doc.internal.pageSize.height - 10);
+                doc.text(`Wygenerowano: ${new Date().toLocaleDateString('pl-PL')}`, 14, doc.internal.pageSize.height - 10);
+            }
+            
+            doc.save('CzystePowietrze-Podsumowanie.pdf');
+        };
+    };
+
+    return (
+        <div className="results">
+            <p className="beneficiary"><strong>Beneficjent:</strong> {form.name && form.address ? `${form.name}, ${form.address}` : ''}</p>
+            <h2>Poziom dofinansowania: {levelText[supportLevel]}</h2>
+            
+            {results.docs.rows.length > 0 && <CategoryTable title="Dokumentacja" data={results.docs} />}
+            {results.heat.rows.length > 0 && <CategoryTable title="Wymiana źródła ciepła" data={results.heat} />}
+            {results.thermo.rows.length > 0 && <CategoryTable title="Prace termomodernizacyjne" data={results.thermo} />}
+            {results.vent.rows.length > 0 && <CategoryTable title="Modernizacja systemu wentylacji" data={results.vent} />}
+            
+            <h3>Podsumowanie</h3>
+            <table>
+                <tbody>
+                    <tr><th>Kwota netto inwestycji</th><td>{results.totals.net.toFixed(2)} zł</td></tr>
+                    <tr><th>VAT</th><td>{results.totals.vat.toFixed(2)} zł</td></tr>
+                    <tr><th>Kwota brutto inwestycji</th><td>{results.totals.gross.toFixed(2)} zł</td></tr>
+                    <tr><th>Dofinansowanie</th><td>{results.totals.grant.toFixed(2)} zł</td></tr>
+                    <tr><th>Kwota dopłaty beneficjenta</th><td>{results.totals.beneficiary.toFixed(2)} zł</td></tr>
+                </tbody>
+            </table>
+            <div className="actions" style={{ marginTop: '1rem' }}>
+                <button type="button" className="btn-secondary" onClick={exportResultsToPDF}>Eksportuj do PDF</button>
+                <button type="button" className="btn-secondary" onClick={() => window.print()}>Drukuj</button>
+            </div>
+        </div>
+    );
 }
 
 function CategoryTable({ title, data }) {
-  if (!data || !data.rows || data.rows.length === 0) return null;
-  return (
-    <div style={{ marginBottom: '1.5rem' }}>
-      <h3>{title}</h3>
-      <table>
-        <thead>
-          <tr>
-            <th>Pozycja</th><th>Ilość</th><th>Koszt netto</th><th>VAT</th><th>Koszt brutto</th><th>Dofinansowanie</th><th>Dopłata beneficjenta</th>
-          </tr>
-        </thead>
-        <tbody>
-          {data.rows.map((row, idx) => (
-            <tr key={idx}>
-              <td>{row.name}</td><td>{row.quantity.toFixed(2)}</td><td>{row.costNet.toFixed(2)}</td><td>{row.vatAmount.toFixed(2)}</td><td>{row.gross.toFixed(2)}</td><td>{row.grant.toFixed(2)}</td><td>{row.beneficiary.toFixed(2)}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
+    if (!data || !data.rows || data.rows.length === 0) return null;
+    return (
+        <div style={{ marginBottom: '1.5rem' }}>
+            <h3>{title}</h3>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Pozycja</th><th>Ilość</th><th>Koszt netto</th><th>VAT</th><th>Koszt brutto</th><th>Dofinansowanie</th><th>Dopłata beneficjenta</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {data.rows.map((row, idx) => (
+                        <tr key={idx}>
+                            <td>{row.name}</td><td>{row.quantity.toFixed(2)}</td><td>{row.costNet.toFixed(2)}</td><td>{row.vatAmount.toFixed(2)}</td>
+                            <td>{row.gross.toFixed(2)}</td><td>{row.grant.toFixed(2)}</td><td>{row.beneficiary.toFixed(2)}</td>
+                        </tr>
+                    ))}
+                </tbody>
+            </table>
+        </div>
+    );
 }
+
 
 // --- Główny komponent App ---
 
@@ -232,7 +226,6 @@ export default function App() {
   const [thermoEntries, setThermoEntries] = useState(initEntries(thermoItems));
   const [ventEntries, setVentEntries] = useState(initEntries(ventItems));
 
-  const [supportLevel, setSupportLevel] = useState(null);
   const [results, setResults] = useState(null);
 
   const handleFormChange = e => {
@@ -244,10 +237,10 @@ export default function App() {
     setter(prev => ({ ...prev, [id]: { ...prev[id], [field]: value } }));
   };
 
-  const determineSupportLevel = () => {
-    const applicantIncome = parseDecimal(form.applicantIncome);
-    const householdIncome = parseDecimal(form.householdIncome);
-    const people = parseInt(form.people, 10) || 1;
+  const determineSupportLevel = (formData) => {
+    const applicantIncome = parseDecimal(formData.applicantIncome);
+    const householdIncome = parseDecimal(formData.householdIncome);
+    const people = parseInt(formData.people, 10) || 1;
     const incomePerPerson = people > 0 ? householdIncome / people : 0;
     
     const THRESHOLDS = {
@@ -256,7 +249,7 @@ export default function App() {
         BASIC_ANNUAL: 135000,
     };
 
-    if (form.fullThermo === 'yes') {
+    if (formData.fullThermo === 'yes') {
         if ((people === 1 && incomePerPerson <= THRESHOLDS.HIGHEST.SINGLE) ||
             (people > 1 && incomePerPerson <= THRESHOLDS.HIGHEST.MULTI)) {
           return 'highest';
@@ -291,24 +284,27 @@ export default function App() {
       const grant = Math.min(costNet, qty * grantPerUnit);
       const vatAmount = costNet * vatRate;
       
-      result.rows.push({ name: item.name, quantity: qty, costNet, vatAmount, gross: costNet + vatAmount, grant, beneficiary: (costNet + vatAmount) - grant });
+      // *** NOWA ZMIANA: Zaokrąglanie kwoty brutto dla każdej pozycji ***
+      const gross = Math.round(costNet + vatAmount);
+      const beneficiary = gross - grant;
+
+      result.rows.push({ name: item.name, quantity: qty, costNet, vatAmount, gross, grant, beneficiary });
       result.net += costNet;
       result.vat += vatAmount;
       result.grant += grant;
     });
     
-    result.gross = result.net + result.vat;
+    result.gross = result.net + result.vat; // Suma brutto przed zaokrągleniem
     result.beneficiary = result.gross - result.grant;
     return result;
   };
 
   const handleSubmit = e => {
     e.preventDefault();
-    const level = determineSupportLevel();
-    setSupportLevel(level);
+    const level = determineSupportLevel(form);
 
     if (level === 'none') {
-      setResults(null);
+      setResults(null); // Resetuj wyniki jeśli brak kwalifikacji
       return;
     }
 
@@ -322,14 +318,30 @@ export default function App() {
       vat: docs.vat + heat.vat + thermo.vat + vent.vat,
       grant: docs.grant + heat.grant + thermo.grant + vent.grant,
     };
-    totals.gross = totals.net + totals.vat;
+    
+    // *** NOWA ZMIANA: Zaokrąglenie końcowej sumy brutto ***
+    totals.gross = Math.round(totals.net + totals.vat);
     
     const grantCap = { highest: 135000, increased: 99000, basic: 66000 }[level] || 0;
     totals.grant = Math.min(totals.grant, grantCap);
     totals.beneficiary = totals.gross - totals.grant;
 
-    setResults({ docs, heat, thermo, vent, totals });
+    setResults({ docs, heat, thermo, vent, totals, level });
   };
+  
+  // Obliczanie maksymalnych grantów dynamicznie na podstawie formularza
+  const currentSupportLevel = useMemo(() => determineSupportLevel(form), [form]);
+
+  const calculateMaxGrant = (items, level) => {
+    if (!level || level === 'none') return 0;
+    const factor = { highest: 1.0, increased: 0.7, basic: 0.4 }[level];
+    return items.reduce((sum, item) => sum + item.max100 * factor, 0);
+  };
+  
+  const maxGrantDocs = useMemo(() => calculateMaxGrant(documentationItems, currentSupportLevel), [currentSupportLevel]);
+  const maxGrantHeat = useMemo(() => calculateMaxGrant(heatItems, currentSupportLevel), [currentSupportLevel]);
+  const maxGrantThermo = useMemo(() => calculateMaxGrant(thermoItems, currentSupportLevel), [currentSupportLevel]);
+  const maxGrantVent = useMemo(() => calculateMaxGrant(ventItems, currentSupportLevel), [currentSupportLevel]);
 
   return (
     <div className="container">
@@ -369,19 +381,19 @@ export default function App() {
           </label>
         </fieldset>
 
-        <CostCategoryInput title="Dokumentacja" items={documentationItems} entries={docEntries} updateEntry={(id, field, value) => updateEntry(setDocEntries, id, field, value)} />
-        {form.replaceHeat === 'yes' && <CostCategoryInput title="Wymiana źródła ciepła" items={heatItems} entries={heatEntries} updateEntry={(id, field, value) => updateEntry(setHeatEntries, id, field, value)} />}
+        <CostCategoryInput title="Dokumentacja" items={documentationItems} entries={docEntries} updateEntry={(id, field, value) => updateEntry(setDocEntries, id, field, value)} maxGrant={maxGrantDocs} />
+        {form.replaceHeat === 'yes' && <CostCategoryInput title="Wymiana źródła ciepła" items={heatItems} entries={heatEntries} updateEntry={(id, field, value) => updateEntry(setHeatEntries, id, field, value)} maxGrant={maxGrantHeat} />}
         {form.fullThermo === 'yes' && (
           <>
-            <CostCategoryInput title="Prace termomodernizacyjne" items={thermoItems} entries={thermoEntries} updateEntry={(id, field, value) => updateEntry(setThermoEntries, id, field, value)} />
-            <CostCategoryInput title="Modernizacja systemu wentylacji" items={ventItems} entries={ventEntries} updateEntry={(id, field, value) => updateEntry(setVentEntries, id, field, value)} />
+            <CostCategoryInput title="Prace termomodernizacyjne" items={thermoItems} entries={thermoEntries} updateEntry={(id, field, value) => updateEntry(setThermoEntries, id, field, value)} maxGrant={maxGrantThermo} />
+            <CostCategoryInput title="Modernizacja systemu wentylacji" items={ventItems} entries={ventEntries} updateEntry={(id, field, value) => updateEntry(setVentEntries, id, field, value)} maxGrant={maxGrantVent} />
           </>
         )}
 
         <div className="actions"><button type="submit">Oblicz</button></div>
       </form>
 
-      {results && <ResultsDisplay form={form} results={results} supportLevel={supportLevel} />}
+      {results && <ResultsDisplay form={form} results={results} supportLevel={results.level} />}
     </div>
   );
 }
