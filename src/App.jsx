@@ -1,8 +1,26 @@
 import React, { useState } from 'react';
 import { jsPDF } from 'jspdf';
+import autoTable from 'jspdf-autotable';
 import { documentationItems, heatItems, thermoItems, ventItems, energyOptions } from './data/programData';
+import latoFont from './assets/Lato-Regular.ttf';
 
-// --- Komponenty pomocnicze (w jednym pliku dla prostoty) ---
+// --- FUNKCJE POMOCNICZE PRZENIESIONE POZA KOMPONENT ---
+// To rozwiązuje błąd "Cannot access before initialization"
+
+const initEntries = items => {
+  const obj = {};
+  items.forEach(item => {
+    obj[item.id] = { quantity: '', price: '', vat: item.vat };
+  });
+  return obj;
+};
+
+const parseDecimal = (value) => {
+  if (value === undefined || value === null || value === '') return 0;
+  return parseFloat(value.toString().replace(',', '.')) || 0;
+};
+
+// --- Komponenty pomocnicze (również poza głównym komponentem) ---
 
 function CostCategoryInput({ title, description, items, entries, updateEntry }) {
   return (
@@ -48,12 +66,100 @@ function ResultsDisplay({ form, results, supportLevel }) {
     );
   }
 
-  const exportResultsToPDF = () => { /* ... implementacja PDF ... */ };
-  
   const levelText = {
     highest: 'Najwyższy – do 100 % netto',
     increased: 'Podwyższony – do 70 %',
     basic: 'Podstawowy – do 40 %'
+  };
+
+  const exportResultsToPDF = async () => {
+    if (!results) return;
+
+    const fontResponse = await fetch(latoFont);
+    const fontBlob = await fontResponse.blob();
+    
+    const reader = new FileReader();
+    reader.readAsDataURL(fontBlob);
+    reader.onloadend = () => {
+      const base64Font = reader.result.split(',')[1];
+      
+      const doc = new jsPDF();
+      
+      doc.addFileToVFS('Lato-Regular.ttf', base64Font);
+      doc.addFont('Lato-Regular.ttf', 'Lato', 'normal');
+      doc.setFont('Lato');
+
+      doc.setFontSize(18);
+      doc.text('Podsumowanie z kalkulatora "Czyste Powietrze 2025"', 14, 22);
+      doc.setFontSize(11);
+      doc.setTextColor(100);
+      doc.text(`Beneficjent: ${form.name || 'Brak danych'}, ${form.address || 'Brak danych'}`, 14, 32);
+      doc.text(`Poziom dofinansowania: ${levelText[supportLevel]}`, 14, 38);
+
+      autoTable(doc, {
+        startY: 45,
+        head: [['Podsumowanie finansowe', 'Kwota']],
+        body: [
+            ['Kwota netto inwestycji', `${results.totals.net.toFixed(2)} zł`],
+            ['VAT', `${results.totals.vat.toFixed(2)} zł`],
+            ['Kwota brutto inwestycji', `${results.totals.gross.toFixed(2)} zł`],
+            ['Przyznane dofinansowanie', `${results.totals.grant.toFixed(2)} zł`],
+            ['Wkład własny beneficjenta', `${results.totals.beneficiary.toFixed(2)} zł`],
+        ],
+        theme: 'striped',
+        styles: { font: 'Lato', fontStyle: 'normal' },
+        headStyles: {
+            fillColor: '#2c3e50',
+            textColor: 'white',
+            fontStyle: 'bold',
+        },
+      });
+
+      const generateCategoryTable = (title, data) => {
+        if (data && data.rows.length > 0 && data.net > 0) {
+            autoTable(doc, {
+                startY: doc.lastAutoTable.finalY + 12,
+                head: [
+                  [{ content: title, colSpan: 7, styles: { halign: 'center', fillColor: '#34495e', fontStyle: 'bold' } }],
+                  ['Pozycja', 'Ilość', 'Netto', 'VAT', 'Brutto', 'Dotacja', 'Wkład']
+                ],
+                body: data.rows.map(row => [
+                    String(row.name),
+                    String(row.quantity.toFixed(2)),
+                    `${row.costNet.toFixed(2)} zł`,
+                    `${row.vatAmount.toFixed(2)} zł`,
+                    `${row.gross.toFixed(2)} zł`,
+                    `${row.grant.toFixed(2)} zł`,
+                    `${row.beneficiary.toFixed(2)} zł`,
+                ]),
+                theme: 'grid',
+                styles: { font: 'Lato', fontStyle: 'normal' },
+                headStyles: {
+                    fillColor: '#7f8c8d',
+                    textColor: 'white',
+                    fontStyle: 'bold'
+                },
+            });
+        }
+      };
+
+      generateCategoryTable('Dokumentacja', results.docs);
+      generateCategoryTable('Wymiana źródła ciepła', results.heat);
+      generateCategoryTable('Prace termomodernizacyjne', results.thermo);
+      generateCategoryTable('Modernizacja systemu wentylacji', results.vent);
+      
+      const pageCount = doc.internal.getNumberOfPages();
+      for(let i = 1; i <= pageCount; i++) {
+          doc.setPage(i);
+          doc.setFont('Lato', 'normal');
+          doc.setFontSize(9);
+          doc.setTextColor(150);
+          doc.text(`Strona ${i} z ${pageCount}`, doc.internal.pageSize.width - 25, doc.internal.pageSize.height - 10);
+          doc.text(`Wygenerowano: ${new Date().toLocaleDateString('pl-PL')}`, 14, doc.internal.pageSize.height - 10);
+      }
+      
+      doc.save('CzystePowietrze-Podsumowanie.pdf');
+    };
   };
 
   return (
@@ -61,7 +167,6 @@ function ResultsDisplay({ form, results, supportLevel }) {
       <p className="beneficiary"><strong>Beneficjent:</strong> {form.name && form.address ? `${form.name}, ${form.address}`: ''}</p>
       <h2>Poziom dofinansowania: {levelText[supportLevel]}</h2>
       
-      {/* Tabele wyników */}
       {results.docs.rows.length > 0 && <CategoryTable title="Dokumentacja" data={results.docs} />}
       {results.heat.rows.length > 0 && <CategoryTable title="Wymiana źródła ciepła" data={results.heat} />}
       {results.thermo.rows.length > 0 && <CategoryTable title="Prace termomodernizacyjne" data={results.thermo} />}
@@ -78,7 +183,8 @@ function ResultsDisplay({ form, results, supportLevel }) {
         </tbody>
       </table>
       <div className="actions" style={{ marginTop: '1rem' }}>
-        <button type="button" className="btn-secondary" onClick={() => window.print()}>Zapisz jako PDF</button>
+        <button type="button" className="btn-secondary" onClick={exportResultsToPDF}>Eksportuj do PDF</button>
+        <button type="button" className="btn-secondary" onClick={() => window.print()}>Drukuj</button>
       </div>
     </div>
   );
@@ -107,29 +213,14 @@ function CategoryTable({ title, data }) {
   );
 }
 
-
 // --- Główny komponent App ---
-
-const initEntries = items => {
-  const obj = {};
-  items.forEach(item => {
-    obj[item.id] = { quantity: '', price: '', vat: item.vat };
-  });
-  return obj;
-};
-
-const parseDecimal = (value) => {
-  if (value === undefined || value === null || value === '') return 0;
-  return parseFloat(value.toString().replace(',', '.')) || 0;
-};
 
 export default function App() {
   const [form, setForm] = useState({
     name: '',
     address: '',
-    // Zmieniamy pole dochodu na konkretną kwotę
-    applicantIncome: '', // Roczny dochód wnioskodawcy (dla progu podstawowego)
-    householdIncome: '', // Miesięczny dochód całego gospodarstwa
+    applicantIncome: '',
+    householdIncome: '', 
     people: '1',
     energy: 'high',
     replaceHeat: 'no',
@@ -159,28 +250,24 @@ export default function App() {
     const people = parseInt(form.people, 10) || 1;
     const incomePerPerson = people > 0 ? householdIncome / people : 0;
     
-    // Progi dochodowe (zgodnie z programem na 2025 r.)
     const THRESHOLDS = {
         HIGHEST: { SINGLE: 1894, MULTI: 1353 },
         INCREASED: { SINGLE: 2651, MULTI: 1894 },
         BASIC_ANNUAL: 135000,
     };
 
-    // 1. Sprawdzenie progu najwyższego (kompleksowa termomodernizacja)
     if (form.fullThermo === 'yes') {
-      if ((people === 1 && incomePerPerson <= THRESHOLDS.HIGHEST.SINGLE) ||
-          (people > 1 && incomePerPerson <= THRESHOLDS.HIGHEST.MULTI)) {
-        return 'highest';
-      }
+        if ((people === 1 && incomePerPerson <= THRESHOLDS.HIGHEST.SINGLE) ||
+            (people > 1 && incomePerPerson <= THRESHOLDS.HIGHEST.MULTI)) {
+          return 'highest';
+        }
     }
     
-    // 2. Sprawdzenie progu podwyższonego
     if ((people === 1 && incomePerPerson <= THRESHOLDS.INCREASED.SINGLE) ||
         (people > 1 && incomePerPerson <= THRESHOLDS.INCREASED.MULTI)) {
       return 'increased';
     }
 
-    // 3. Sprawdzenie progu podstawowego
     if (applicantIncome <= THRESHOLDS.BASIC_ANNUAL) {
       return 'basic';
     }
@@ -237,7 +324,6 @@ export default function App() {
     };
     totals.gross = totals.net + totals.vat;
     
-    // Limity dotacji
     const grantCap = { highest: 135000, increased: 99000, basic: 66000 }[level] || 0;
     totals.grant = Math.min(totals.grant, grantCap);
     totals.beneficiary = totals.gross - totals.grant;
