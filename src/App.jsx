@@ -3,7 +3,7 @@ import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { documentationItems, heatItems, thermoItems, ventItems, energyOptions } from './data/programData';
 import latoFont from './assets/Lato-Regular.ttf';
-import logo from './assets/Grupa Kaman.png';
+import logo from './assets/image_b0702b.png';
 
 // --- FUNKCJE POMOCNICZE ---
 
@@ -55,7 +55,7 @@ function CostCategoryInput({ title, description, items, entries, updateEntry, ma
           {items.map(item => (
             <tr key={item.id}>
               <td>{item.name}</td>
-              <td><input type="number" min="0" step={item.unit === 'm²' || item.unit === 'szt' ? '1' : '0.01'} value={entries[item.id].quantity} onChange={e => updateEntry(item.id, 'quantity', e.target.value)} /></td>
+              <td><input type="number" min="0" step={item.unit === 'm²' ? '0.01' : '1'} value={entries[item.id].quantity} onChange={e => updateEntry(item.id, 'quantity', e.target.value)} /></td>
               <td><input type="number" min="0" step="0.01" value={entries[item.id].price} onChange={e => updateEntry(item.id, 'price', e.target.value)} /></td>
               <td>
                 <select value={entries[item.id].vat} onChange={e => updateEntry(item.id, 'vat', e.target.value)}>
@@ -227,7 +227,7 @@ function ResultsDisplay({ form, results, supportLevel, maxGrants }) {
                 doc.setPage(i);
                 
                 doc.saveGraphicsState();
-                doc.setGState(new doc.GState({opacity: 0.05})); // ZMIANA OPACITY
+                doc.setGState(new doc.GState({opacity: 0.1}));
                 const watermarkWidth = 100;
                 const watermarkHeight = watermarkWidth * logoAspectRatio;
                 for (let y = watermarkHeight; y < pageHeight; y += watermarkHeight + 50) {

@@ -17,14 +17,15 @@ export const heatItems = [
   { id: 'central_heating', name: 'Instalacja c.o. oraz c.w.u.', unit: 'szt', max100: 20400, vat: 8 }
 ];
 
+// POPRAWIONE WARTOŚCI max100 ZGODNIE Z OFICJALNYM REGULAMINEM
 export const thermoItems = [
   { id: 'walls', name: 'Ocieplenie przegród budowlanych', unit: 'm²', max100: 200, vat: 8 },
+  { id: 'roof', name: 'Ocieplenie stropodachu/stropu pod nieogrzewanym poddaszem', unit: 'm²', max100: 150, vat: 8 },
   { id: 'windows', name: 'Stolarka okienna', unit: 'm²', max100: 1200, vat: 8 },
   { id: 'doors', name: 'Stolarka drzwiowa', unit: 'm²', max100: 2500, vat: 8 },
   { id: 'garage_doors', name: 'Bramy garażowe', unit: 'szt', max100: 4600, vat: 8 }
 ];
 
-// DODANO REKUPERATORY ŚCIENNE JAKO OSOBNĄ POZYCJĘ
 export const ventItems = [
   { id: 'rekuperation_central', name: 'Wentylacja mechaniczna z odzyskiem ciepła (centrala)', unit: 'kpl', max100: 16700, vat: 8 },
   { id: 'rekuperation_wall', name: 'Wentylacja mechaniczna z odzyskiem ciepła (rekuperatory ścienne)', unit: 'szt', max100: 2000, vat: 8 },
