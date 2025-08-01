@@ -3,7 +3,7 @@ import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { documentationItems, heatItems, thermoItems, ventItems, energyOptions } from './data/programData';
 import latoFont from './assets/Lato-Regular.ttf';
-import logo from './assets/image_b0702b.png';
+import logo from './assets/Grupa Kaman.png';
 
 // --- FUNKCJE POMOCNICZE ---
 
