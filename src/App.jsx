@@ -55,7 +55,7 @@ function CostCategoryInput({ title, description, items, entries, updateEntry, ma
           {items.map(item => (
             <tr key={item.id}>
               <td>{item.name}</td>
-              <td><input type="number" min="0" step={item.unit === 'm²' ? '0.01' : '1'} value={entries[item.id].quantity} onChange={e => updateEntry(item.id, 'quantity', e.target.value)} /></td>
+              <td><input type="number" min="0" step={item.unit === 'm²' || item.unit === 'szt' ? '1' : '0.01'} value={entries[item.id].quantity} onChange={e => updateEntry(item.id, 'quantity', e.target.value)} /></td>
               <td><input type="number" min="0" step="0.01" value={entries[item.id].price} onChange={e => updateEntry(item.id, 'price', e.target.value)} /></td>
               <td>
                 <select value={entries[item.id].vat} onChange={e => updateEntry(item.id, 'vat', e.target.value)}>
@@ -113,6 +113,7 @@ function ResultsDisplay({ form, results, supportLevel, maxGrants }) {
             doc.setFont('Lato');
 
             const pageWidth = doc.internal.pageSize.getWidth();
+            const pageHeight = doc.internal.pageSize.getHeight();
             const logoWidth = 60; 
             const logoAspectRatio = logoImg.height / logoImg.width;
             const logoHeight = logoWidth * logoAspectRatio;
@@ -224,6 +225,18 @@ function ResultsDisplay({ form, results, supportLevel, maxGrants }) {
             const pageCount = doc.internal.getNumberOfPages();
             for(let i = 1; i <= pageCount; i++) {
                 doc.setPage(i);
+                
+                doc.saveGraphicsState();
+                doc.setGState(new doc.GState({opacity: 0.05})); // ZMIANA OPACITY
+                const watermarkWidth = 100;
+                const watermarkHeight = watermarkWidth * logoAspectRatio;
+                for (let y = watermarkHeight; y < pageHeight; y += watermarkHeight + 50) {
+                    for (let x = watermarkWidth / 2; x < pageWidth; x += watermarkWidth + 50) {
+                        doc.addImage(logo, 'PNG', x, y, watermarkWidth, watermarkHeight);
+                    }
+                }
+                doc.restoreGraphicsState();
+                
                 doc.setFont('Lato', 'normal');
                 doc.setFontSize(9);
                 doc.setTextColor(150);
@@ -362,8 +375,9 @@ export default function App() {
       const vatRate = parseDecimal(entry.vat) / 100;
       const costNet = qty * price;
       
-      const maxGrantForItem = item.max100 * factor;
-      const grant = Math.min(costNet, maxGrantForItem);
+      const grantPerUnit = item.max100 * factor;
+      const totalMaxGrantForItem = (item.unit === 'm²' || item.unit === 'szt') ? grantPerUnit * qty : grantPerUnit;
+      const grant = Math.min(costNet, totalMaxGrantForItem);
       
       const vatAmount = costNet * vatRate;
       const gross = Math.round(costNet + vatAmount);
@@ -417,8 +431,10 @@ export default function App() {
 
       items.forEach(item => {
           const entry = entries[item.id] || {};
-          if (parseDecimal(entry.quantity) > 0) {
-              totalMaxGrant += item.max100 * factor;
+          const qty = parseDecimal(entry.quantity);
+          if (qty > 0) {
+              const grantPerUnit = item.max100 * factor;
+              totalMaxGrant += (item.unit === 'm²' || item.unit === 'szt') ? grantPerUnit * qty : grantPerUnit;
           }
       });
       return totalMaxGrant;

@@ -2,11 +2,9 @@
 
 export const documentationItems = [
   { id: 'audit', name: 'Audyt energetyczny', unit: 'szt', max100: 1200, vat: 8 },
-  // Przywrócono brakującą pozycję z poprawną kwotą
   { id: 'certificate', name: 'Świadectwo charakterystyki energetycznej', unit: 'szt', max100: 300, vat: 8 },
 ];
 
-// Zaktualizowane i zweryfikowane kwoty maksymalne (max100)
 export const heatItems = [
   { id: 'district', name: 'Podłączenie do sieci ciepłowniczej z węzłem cieplnym', unit: 'szt', max100: 15500, vat: 8 },
   { id: 'air_water_pump', name: 'Pompa ciepła powietrze/woda', unit: 'szt', max100: 28000, vat: 8 },
@@ -20,14 +18,16 @@ export const heatItems = [
 ];
 
 export const thermoItems = [
-  { id: 'walls', name: 'Ocieplenie przegród budowlanych', unit: 'm²', max100: 23000, vat: 8 },
-  { id: 'windows', name: 'Stolarka okienna', unit: 'm²', max100: 9300, vat: 8 },
-  { id: 'doors', name: 'Stolarka drzwiowa', unit: 'm²', max100: 4600, vat: 8 },
+  { id: 'walls', name: 'Ocieplenie przegród budowlanych', unit: 'm²', max100: 200, vat: 8 },
+  { id: 'windows', name: 'Stolarka okienna', unit: 'm²', max100: 1200, vat: 8 },
+  { id: 'doors', name: 'Stolarka drzwiowa', unit: 'm²', max100: 2500, vat: 8 },
   { id: 'garage_doors', name: 'Bramy garażowe', unit: 'szt', max100: 4600, vat: 8 }
 ];
 
+// DODANO REKUPERATORY ŚCIENNE JAKO OSOBNĄ POZYCJĘ
 export const ventItems = [
-  { id: 'rekuperation', name: 'Wentylacja mechaniczna z odzyskiem ciepła', unit: 'kpl', max100: 16700, vat: 8 },
+  { id: 'rekuperation_central', name: 'Wentylacja mechaniczna z odzyskiem ciepła (centrala)', unit: 'kpl', max100: 16700, vat: 8 },
+  { id: 'rekuperation_wall', name: 'Wentylacja mechaniczna z odzyskiem ciepła (rekuperatory ścienne)', unit: 'szt', max100: 2000, vat: 8 },
 ];
 
 export const energyOptions = [
